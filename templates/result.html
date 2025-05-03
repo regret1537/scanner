@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <title>掃描結果</title>
+</head>
+<body>
+  <h1>掃描結果：{{ target }}</h1>
+
+  {% for vuln_type, report in results.items() %}
+    <h2>{{ vuln_type }}</h2>
+    <pre>{{ report | tojson(indent=2, ensure_ascii=false) }}</pre>
+  {% endfor %}
+
+  <p><a href="/">回到首頁</a></p>
+</body>
+</html>
+
