@@ -7,8 +7,14 @@
 <body>
   <h1>網站漏洞掃描器</h1>
   <form method="post">
-    目標 URL：<input type="text" name="url" placeholder="https://example.com/page" size="50" required>
-    <button type="submit">開始掃描</button>
+    <!-- Step 1: Enumerate subdomains -->
+    <input type="hidden" name="stage" value="enum">
+    <p>
+      目標 URL：<input type="text" name="url" placeholder="https://example.com/page" size="50" required>
+    </p>
+    <p>
+      <button type="submit">列出子域名</button>
+    </p>
   </form>
 </body>
 </html>

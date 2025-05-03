@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <title>選擇子域名及掃描項目</title>
+</head>
+<body>
+  <h1>選擇子域名及掃描項目：{{ target }}</h1>
+  <form method="post">
+    <!-- Step 2: Perform scans -->
+    <input type="hidden" name="stage" value="scan">
+    <input type="hidden" name="target" value="{{ target }}">
+    <fieldset>
+      <legend>子域名列表</legend>
+      {% for host in hosts %}
+        <label><input type="checkbox" name="hosts" value="{{ host }}" checked> {{ host }}</label><br>
+      {% endfor %}
+    </fieldset>
+    <fieldset>
+      <legend>掃描項目</legend>
+      <label><input type="checkbox" name="scans" value="sqli" checked> SQL Injection</label>
+      <label><input type="checkbox" name="scans" value="xss" checked> XSS</label>
+      <label><input type="checkbox" name="scans" value="csrf"> CSRF</label>
+      <label><input type="checkbox" name="scans" value="rce"> RCE</label>
+      <label><input type="checkbox" name="scans" value="exp"> EXP PoC</label>
+    </fieldset>
+    <p><button type="submit">開始掃描</button></p>
+  </form>
+  <p><a href="/">回到首頁</a></p>
+</body>
+</html>
