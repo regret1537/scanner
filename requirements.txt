@@ -2,3 +2,6 @@ Flask==2.2.3
 requests==2.31.0
 beautifulsoup4==4.12.2
 sublist3r>=1.0
+PyYAML>=6.0
+redis>=4.5.0
+rq>=1.13.0

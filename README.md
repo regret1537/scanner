@@ -107,3 +107,42 @@ export VULNERS_API_KEY="your_api_key"
 0 0 * * 0 cd /path/to/scanner && ./scripts/update_pocs.py >> cron_update_pocs.log 2>&1
 0 1 * * 0 cd /path/to/scanner && ./scripts/fetch_vulners_cve.py >> cron_fetch_vulners.log 2>&1
 ``` 
+
+## 插件化目錄結構
+所有掃描器與 PoC 腳本都放在 `scanners/plugins/` 下，分門別類：
+```
+scanners/plugins/
+├─ subdomain/scan_subdomains.py
+├─ portscan/scan_ports.py
+├─ sql_injection/scan_sql_injection.py
+├─ xss/scan_xss.py
+├─ csrf/scan_csrf.py
+├─ rce/scan_rce.py
+└─ exp/
+   ├─ scan_exp.py
+   └─ pocs/…  # 各 PoC 腳本
+```
+
+## 測試 (pytest)
+安裝測試依賴並執行：
+```bash
+pip install -r requirements.txt pytest
+pytest tests/
+```
+已經提供對所有 EXP PoC 的自動加載和執行測試 `tests/test_exp_pocs.py`，可擴充其他模組的測試。
+
+## 任務隊列 (RQ Worker)
+掃描任務非同步執行，使用 RQ + Redis：
+1. 啟動 Redis：`docker-compose up -d redis` 或本機安裝並執行
+2. 執行 RQ Worker：
+   ```bash
+   ./scripts/start_worker.sh
+   ```
+3. 在 Web UI 提交掃描後，即可在 `/api/scan_status/<task_id>` 查詢進度。
+
+## Docker Compose 部署
+一鍵啟動 Redis 與 Web 應用：
+```bash
+docker-compose up --build
+```
+服務將啟動於 `http://localhost:5000`，並自動連接內部 Redis。

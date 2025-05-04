@@ -2,16 +2,29 @@ from flask import Flask, render_template, request
 import os
 import pkgutil
 import importlib
+import yaml  # for loading configuration
 
 # Dynamic loading of scanner functions
 def load_scans():
+    """
+    Load scan functions from plugins directory.
+    Each plugin category under scanners/plugins contains modules with scan_ functions.
+    """
     scans = {}
-    scanners_dir = os.path.join(os.path.dirname(__file__), 'scanners')
-    for finder, module_name, ispkg in pkgutil.iter_modules([scanners_dir]):
-        module = importlib.import_module(f'scanners.{module_name}')
-        for attr in dir(module):
-            if attr.startswith('scan_') and callable(getattr(module, attr)):
-                scans[attr[5:]] = getattr(module, attr)
+    base = os.path.dirname(__file__)
+    plugins_dir = os.path.join(base, 'scanners', 'plugins')
+    if not os.path.isdir(plugins_dir):
+        return scans
+    for category in os.listdir(plugins_dir):
+        cat_path = os.path.join(plugins_dir, category)
+        if not os.path.isdir(cat_path):
+            continue
+        for finder, module_name, ispkg in pkgutil.iter_modules([cat_path]):
+            module = importlib.import_module(f'scanners.plugins.{category}.{module_name}')
+            for attr in dir(module):
+                if attr.startswith('scan_') and callable(getattr(module, attr)):
+                    key = attr[5:]
+                    scans[key] = getattr(module, attr)
     return scans
 
 ALL_SCANS = load_scans()
@@ -19,9 +32,43 @@ ALL_SCANS = load_scans()
 subdomain_scan = ALL_SCANS.pop('subdomains', None)
 port_scan = ALL_SCANS.pop('ports', None)
 vuln_scans = ALL_SCANS
+# Load global configuration from config.yaml
+CONFIG = {}
+config_path = os.path.join(os.path.dirname(__file__), 'config.yaml')
+if os.path.isfile(config_path):
+    with open(config_path) as cf:
+        CONFIG = yaml.safe_load(cf)
 
-# Default scans to check on UI
-DEFAULT_SCANS = ['sql_injection', 'xss']
+# Default scans to check on UI (override via config.yaml)
+DEFAULT_SCANS = CONFIG.get('default_scans', ['sql_injection', 'xss'])
+# Default PoC modules to check on UI (override via config.yaml)
+DEFAULT_POC = CONFIG.get('default_pocs', [])
+  
+# Configure global HTTP client with timeout, retries, and concurrency limits
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+_timeout = CONFIG.get('timeout', 5)
+_retry_total = CONFIG.get('retry', 2)
+_concurrency = CONFIG.get('concurrency', 10)
+
+_session = requests.Session()
+_retry = Retry(total=_retry_total, backoff_factor=0.5,
+               status_forcelist=[500, 502, 503, 504])
+_adapter = HTTPAdapter(max_retries=_retry, pool_maxsize=_concurrency)
+_session.mount('http://', _adapter)
+_session.mount('https://', _adapter)
+
+def _global_get(url, *args, timeout=None, **kwargs):
+    return _session.get(url, timeout=timeout or _timeout, **kwargs)
+def _global_post(url, *args, timeout=None, **kwargs):
+    return _session.post(url, timeout=timeout or _timeout, **kwargs)
+
+# Override requests methods so scanner modules use configured session
+requests.Session = lambda *args, **kwargs: _session
+requests.get = _global_get
+requests.post = _global_post
 # Pretty names for display
 PRETTY_NAMES = {
     'sql_injection': 'SQL Injection',
@@ -35,6 +82,20 @@ def pretty_name(key):
 
 app = Flask(__name__)
 
+# Asynchronous task executor and storage
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+from flask import jsonify, abort
+
+# Thread pool for background scans
+executor = ThreadPoolExecutor(max_workers=4)
+# task_id -> Future
+TASKS = {}
+# task_id -> {'done': int, 'total': int}
+PROGRESS = {}
+# task_id -> {'results': dict, 'login_required': bool, 'target': str}
+RESULTS = {}
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     # Multi-step: first enumerate subdomains, then scan
@@ -44,7 +105,9 @@ def index():
         if stage == 'enum':
             # Step 1: enumerate subdomains and select hosts
             target = request.form.get('url').strip()
-            subdomains = subdomain_scan(target) if subdomain_scan else []
+            # load subdomain options from config
+            sd_opts = CONFIG.get('subdomain_opts', {})
+            subdomains = subdomain_scan(target, sd_opts) if subdomain_scan else []
             # include root domain
             from urllib.parse import urlparse
             parsed = urlparse(target)
@@ -54,16 +117,31 @@ def index():
             hosts = [root]
             if isinstance(subdomains, list):
                 hosts += subdomains
-            # Provide vulnerability scan options to template
-            scans_info = [(key, pretty_name(key)) for key in vuln_scans.keys()]
-            return render_template('select_hosts.html', target=target, hosts=hosts,
-                                   scans_info=scans_info, default_scans=DEFAULT_SCANS)
+            # Provide vulnerability scan options to template (exclude PoC group)
+            scans_info = [(key, pretty_name(key)) for key in vuln_scans.keys() if key != 'exp']
+            # Dynamically list available PoC modules
+            exp_dir = os.path.join(os.path.dirname(__file__), 'scanners', 'exp')
+            pocs = []
+            if os.path.isdir(exp_dir):
+                for fname in os.listdir(exp_dir):
+                    if fname.endswith('.py'):
+                        pocs.append(fname[:-3])
+            pocs.sort()
+            # Pretty names for PoC modules
+            pocs_info = [(p, p.replace('_', ' ').replace('-', ' ').title()) for p in pocs]
+            return render_template(
+                'select_hosts.html', target=target, hosts=hosts,
+                scans_info=scans_info, default_scans=DEFAULT_SCANS,
+                pocs_info=pocs_info, default_pocs=DEFAULT_POC
+            )
         # Step 2: perform scans on selected hosts and vulnerabilities
         elif stage == 'scan':
-            # Step 2: run port scans and selected vulnerability scans
+            # Step 2: run port scans, selected vulnerability scans, and PoC modules
             target = request.form.get('target')
             hosts = request.form.getlist('hosts')
             selected = request.form.getlist('scans')
+            # selected PoC modules
+            selected_pocs = request.form.getlist('pocs')
             # Optional authentication via Cookie header
             cookie_header = request.form.get('cookie', '').strip()
             # Prepare to detect login requirements
@@ -93,11 +171,19 @@ def index():
             # Perform scans
             results = {}
             results['Subdomains'] = hosts
-            results['Port Scan'] = port_scan(hosts) if port_scan else {}
+            # Port scan with configured range
+            pr = CONFIG.get('port_range')
+            results['Port Scan'] = port_scan(hosts, pr) if port_scan else {}
+            # run selected vulnerability scans
             for key in selected:
                 scan_fun = vuln_scans.get(key)
                 if scan_fun:
                     results[pretty_name(key)] = scan_fun(target)
+            # run selected PoC modules if any
+            if selected_pocs:
+                scan_exp_fun = vuln_scans.get('exp')
+                if scan_exp_fun:
+                    results[pretty_name('exp')] = scan_exp_fun(target, pocs=selected_pocs)
             # Restore original request methods
             _requests.get = orig_get
             _requests.post = orig_post
@@ -107,6 +193,100 @@ def index():
                                    login_required=login_required)
     # GET or fallback: initial enumeration form
     return render_template('index.html')
+
+
+def run_scan_task(task_id, target, hosts, selected, selected_pocs, cookie_header):
+    """
+    Worker function to perform scans in background and track progress.
+    """
+    login_required = False
+    # prepare request session with cookie and login detection
+    import requests as _requests
+    session = _requests.Session()
+    if cookie_header:
+        session.headers.update({'Cookie': cookie_header})
+    orig_get, orig_post = _requests.get, _requests.post
+    def patched_get(*args, **kwargs):
+        nonlocal login_required
+        resp = session.get(*args, **kwargs)
+        if resp.status_code in (401, 403) or '/login' in resp.url.lower():
+            login_required = True
+        return resp
+    def patched_post(*args, **kwargs):
+        nonlocal login_required
+        resp = session.post(*args, **kwargs)
+        if resp.status_code in (401, 403) or '/login' in resp.url.lower():
+            login_required = True
+        return resp
+    _requests.get, _requests.post = patched_get, patched_post
+    # initialize progress
+    total_steps = 1 + len(selected) + (1 if selected_pocs else 0)
+    PROGRESS[task_id] = {'done': 0, 'total': total_steps}
+    # run scans
+    results = {}
+    results['Subdomains'] = hosts
+    # port scan step
+    # Port scan with configured range
+    pr = CONFIG.get('port_range')
+    results['Port Scan'] = port_scan(hosts, pr) if port_scan else {}
+    PROGRESS[task_id]['done'] += 1
+    # vulnerability scans
+    for key in selected:
+        scan_fun = vuln_scans.get(key)
+        if scan_fun:
+            results[pretty_name(key)] = scan_fun(target)
+        PROGRESS[task_id]['done'] += 1
+    # PoC scans
+    if selected_pocs:
+        scan_exp_fun = vuln_scans.get('exp')
+        if scan_exp_fun:
+            results[pretty_name('exp')] = scan_exp_fun(target, pocs=selected_pocs)
+        PROGRESS[task_id]['done'] += 1
+    # restore requests
+    _requests.get, _requests.post = orig_get, orig_post
+    # save results
+    RESULTS[task_id] = {'results': results, 'login_required': login_required, 'target': target}
+
+
+@app.route('/api/start_scan', methods=['POST'])
+def api_start_scan():
+    # enqueue scanning task
+    target = request.form.get('target')
+    hosts = request.form.getlist('hosts')
+    selected = request.form.getlist('scans')
+    selected_pocs = request.form.getlist('pocs')
+    cookie_header = request.form.get('cookie', '').strip()
+    task_id = uuid.uuid4().hex
+    # submit background task
+    future = executor.submit(run_scan_task, task_id, target, hosts, selected, selected_pocs, cookie_header)
+    TASKS[task_id] = future
+    return jsonify({'task_id': task_id})
+
+@app.route('/api/scan_status/<task_id>', methods=['GET'])
+def api_scan_status(task_id):
+    if task_id not in TASKS:
+        abort(404)
+    future = TASKS[task_id]
+    if future.running():
+        status = 'running'
+    elif future.done():
+        status = 'done'
+    else:
+        status = 'pending'
+    progress = PROGRESS.get(task_id, {})
+    response = {'status': status, 'progress': progress}
+    if status == 'done':
+        data = RESULTS.get(task_id, {})
+        response['results'] = data.get('results')
+        response['login_required'] = data.get('login_required')
+    return jsonify(response)
+
+@app.route('/results/<task_id>')
+def show_results(task_id):
+    data = RESULTS.get(task_id)
+    if not data:
+        abort(404)
+    return render_template('result.html', target=data['target'], results=data['results'], login_required=data['login_required'])
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

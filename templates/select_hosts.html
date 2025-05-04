@@ -12,9 +12,12 @@
     <input type="hidden" name="target" value="{{ target }}">
     <fieldset>
       <legend>子域名列表</legend>
+      <div id="hosts-list">
       {% for host in hosts %}
         <label><input type="checkbox" name="hosts" value="{{ host }}" checked> {{ host }}</label><br>
       {% endfor %}
+      </div>
+      <div id="hosts-pagination-controls"></div>
     </fieldset>
     <fieldset>
       <legend>認證 Cookie (選填)</legend>
@@ -30,8 +33,85 @@
         </label><br>
       {% endfor %}
     </fieldset>
+    <!-- PoC modules selection -->
+    <fieldset>
+      <legend>EXP PoC 模組</legend>
+      <div id="pocs-list">
+      {% for key, label in pocs_info %}
+        <label>
+          <input type="checkbox" name="pocs" value="{{ key }}" {% if key in default_pocs %}checked{% endif %}>
+          {{ label }}
+        </label><br>
+      {% endfor %}
+      </div>
+      <div id="pocs-pagination-controls"></div>
+    </fieldset>
     <p><button type="submit">開始掃描</button></p>
   </form>
   <p><a href="/">回到首頁</a></p>
+  <!-- Pagination and Async Scan JS -->
+  <script>
+  document.addEventListener('DOMContentLoaded', function(){
+    // Client-side pagination for lists
+    function paginateList(listId, pageSize, controlsId) {
+      const container = document.getElementById(listId);
+      if (!container) return;
+      const items = Array.from(container.querySelectorAll('label'));
+      const totalPages = Math.ceil(items.length / pageSize);
+      if (totalPages <= 1) return;
+      let currentPage = 0;
+      const controlsDiv = document.getElementById(controlsId);
+      const prevBtn = document.createElement('button'); prevBtn.type='button'; prevBtn.textContent='Prev';
+      const nextBtn = document.createElement('button'); nextBtn.type='button'; nextBtn.textContent='Next';
+      const pageInfo = document.createElement('span'); pageInfo.style.margin='0 8px';
+      prevBtn.addEventListener('click', function(){ if (currentPage>0) { currentPage--; update(); } });
+      nextBtn.addEventListener('click', function(){ if (currentPage<totalPages-1) { currentPage++; update(); } });
+      controlsDiv.append(prevBtn, pageInfo, nextBtn);
+      function update() {
+        items.forEach((item, idx) => {
+          item.style.display = (idx>=currentPage*pageSize && idx<(currentPage+1)*pageSize) ? '' : 'none';
+        });
+        pageInfo.textContent = ` Page ${currentPage+1} / ${totalPages} `;
+        prevBtn.disabled = currentPage===0;
+        nextBtn.disabled = currentPage===totalPages-1;
+      }
+      update();
+    }
+    paginateList('hosts-list', 20, 'hosts-pagination-controls');
+    paginateList('pocs-list', 20, 'pocs-pagination-controls');
+    // Async scan submission and polling
+    const form = document.querySelector('form');
+    const progressContainer = document.createElement('div');
+    progressContainer.id = 'progress-container'; progressContainer.style.display='none';
+    progressContainer.innerHTML = '<p>Progress: <span id="progress-text"></span></p>';
+    form.parentNode.insertBefore(progressContainer, form.nextSibling);
+    form.addEventListener('submit', function(e){
+      e.preventDefault();
+      progressContainer.style.display = 'block';
+      const btn = form.querySelector('button[type=submit]'); btn.disabled = true;
+      const data = new FormData(form);
+      fetch('/api/start_scan', {method:'POST', body:data})
+        .then(res=>res.json())
+        .then(json=> { pollStatus(json.task_id); })
+        .catch(err=>{ alert('Error starting scan'); console.error(err); });
+    });
+    function pollStatus(taskId) {
+      fetch(`/api/scan_status/${taskId}`)
+        .then(res=>res.json())
+        .then(json=>{
+          const progress = json.progress;
+          if (progress) document.getElementById('progress-text').textContent = `${progress.done}/${progress.total}`;
+          if (json.status==='running' || json.status==='pending') {
+            setTimeout(()=>pollStatus(taskId), 1000);
+          } else if (json.status==='done') {
+            window.location.href = `/results/${taskId}`;
+          } else {
+            alert('Task failed');
+          }
+        })
+        .catch(err=>{ console.error(err); setTimeout(()=>pollStatus(taskId), 2000); });
+    }
+  });
+  </script>
 </body>
 </html>

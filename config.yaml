@@ -1,0 +1,21 @@
+# Configuration for the web scanner
+# Timeout for HTTP requests (seconds)
+timeout: 5
+# Total retry attempts for HTTP requests
+retry: 2
+# Maximum concurrent HTTP requests
+concurrency: 10
+# Default enabled vulnerability scans
+default_scans:
+  - sql_injection
+  - xss
+# Default enabled PoC modules (filenames without .py)
+default_pocs: []
+# Subdomain enumeration options
+subdomain_opts:
+  # depth or other scanner-specific parameters
+  depth: 2
+# Port scan range [start, end]
+port_range:
+  - 1
+  - 1024
