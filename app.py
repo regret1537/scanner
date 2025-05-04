@@ -71,10 +71,10 @@ requests.get = _global_get
 requests.post = _global_post
 # Pretty names for display
 PRETTY_NAMES = {
-    'sql_injection': 'SQL Injection',
-    'xss': 'XSS',
-    'csrf': 'CSRF',
-    'rce': 'RCE',
+    'sql_injection': 'SQL 注入',
+    'xss': '跨站腳本 (XSS)',
+    'csrf': 'CSRF (跨站請求偽造)',
+    'rce': '遠程命令執行 (RCE)',
     'exp': 'EXP PoC'
 }
 def pretty_name(key):
@@ -267,6 +267,8 @@ def api_start_scan():
     total_steps = 1 + len(selected) + (1 if selected_pocs else 0)
     redis_client.set(f"scan:{task_id}:status", 'pending')
     redis_client.hset(f"scan:{task_id}:progress", mapping={'done': 0, 'total': total_steps})
+    # store target for rendering results
+    redis_client.set(f"scan:{task_id}:target", target)
     # submit background task
     executor.submit(run_scan_task, task_id, target, hosts, selected, selected_pocs, cookie_header)
     return jsonify({'task_id': task_id})
@@ -299,14 +301,19 @@ def api_scan_status(task_id):
 
 @app.route('/results/<task_id>')
 def show_results(task_id):
+    # Retrieve target stored at task start
+    target_bytes = redis_client.get(f"scan:{task_id}:target")
+    target = target_bytes.decode() if target_bytes else None
     # Retrieve results from Redis
     data_json = redis_client.get(f"scan:{task_id}:results")
     if not data_json:
         abort(404)
     data = json.loads(data_json)
+    # use target from results if available, else fallback to stored target
+    target = data.get('target') or target
     return render_template(
         'result.html',
-        target=data.get('target'),
+        target=target,
         results=data.get('results'),
         login_required=data.get('login_required')
     )

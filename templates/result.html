@@ -9,10 +9,13 @@
 
   {% for vuln_type, report in results.items() %}
     <h2>{{ vuln_type }}</h2>
-    <pre>{{ report | tojson(indent=2, ensure_ascii=false) }}</pre>
+    <pre>{{ (report | tojson(indent=2))
+           | replace('true', '是')
+           | replace('false', '否') }}</pre>
   {% endfor %}
 
   <p><a href="/">回到首頁</a></p>
+  <p>說明：上述結果中“是”代表偵測到可能的漏洞，“否”代表未偵測到漏洞。</p>
   {% if login_required %}
   <script>
     // Notify user if login required was detected
