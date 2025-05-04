@@ -75,7 +75,8 @@ PRETTY_NAMES = {
     'xss': '跨站腳本 (XSS)',
     'csrf': 'CSRF (跨站請求偽造)',
     'rce': '遠程命令執行 (RCE)',
-    'exp': 'EXP PoC'
+    'exp': 'EXP PoC',
+    'crawler': '爬蟲 (Crawler)'
 }
 def pretty_name(key):
     return PRETTY_NAMES.get(key, key.replace('_', ' ').title())
@@ -175,10 +176,32 @@ def index():
             # Port scan with configured range
             pr = CONFIG.get('port_range')
             results['Port Scan'] = port_scan(hosts, pr) if port_scan else {}
-            # run selected vulnerability scans
+            # run selected vulnerability scans, including crawler with nested page scans
             for key in selected:
                 scan_fun = vuln_scans.get(key)
-                if scan_fun:
+                if not scan_fun:
+                    continue
+                # special handling for crawler: crawl and scan each found URL
+                if key == 'crawler':
+                    pages_map = scan_fun(target)
+                    crawler_results = {}
+                    # other scans to apply on crawled pages
+                    vuln_keys = [k for k in selected if k != 'crawler']
+                    for host, pages in (pages_map or {}).items():
+                        host_entries = []
+                        for page in pages:
+                            page_res = {}
+                            for vk in vuln_keys:
+                                vf = vuln_scans.get(vk)
+                                if vf:
+                                    try:
+                                        page_res[pretty_name(vk)] = vf(page)
+                                    except Exception as e:
+                                        page_res[pretty_name(vk)] = {'error': str(e)}
+                            host_entries.append({'url': page, 'vulnerabilities': page_res})
+                        crawler_results[host] = host_entries
+                    results[pretty_name(key)] = crawler_results
+                else:
                     results[pretty_name(key)] = scan_fun(target)
             # run selected PoC modules if any
             if selected_pocs:
@@ -231,10 +254,31 @@ def run_scan_task(task_id, target, hosts, selected, selected_pocs, cookie_header
     pr = CONFIG.get('port_range')
     results['Port Scan'] = port_scan(hosts, pr) if port_scan else {}
     redis_client.hincrby(f"scan:{task_id}:progress", 'done', 1)
-    # vulnerability scans
+    # vulnerability scans, including crawler with nested page scans
     for key in selected:
         scan_fun = vuln_scans.get(key)
-        if scan_fun:
+        if not scan_fun:
+            redis_client.hincrby(f"scan:{task_id}:progress", 'done', 1)
+            continue
+        if key == 'crawler':
+            pages_map = scan_fun(target)
+            crawler_results = {}
+            vuln_keys = [k for k in selected if k != 'crawler']
+            for host, pages in (pages_map or {}).items():
+                host_entries = []
+                for page in pages:
+                    page_res = {}
+                    for vk in vuln_keys:
+                        vf = vuln_scans.get(vk)
+                        if vf:
+                            try:
+                                page_res[pretty_name(vk)] = vf(page)
+                            except Exception as e:
+                                page_res[pretty_name(vk)] = {'error': str(e)}
+                    host_entries.append({'url': page, 'vulnerabilities': page_res})
+                crawler_results[host] = host_entries
+            results[pretty_name(key)] = crawler_results
+        else:
             results[pretty_name(key)] = scan_fun(target)
         redis_client.hincrby(f"scan:{task_id}:progress", 'done', 1)
     # PoC scans
