@@ -72,16 +72,16 @@ pip install -r requirements.txt
 
 6. 點選 **回到首頁** 可重新執行新的掃描。
 ## PoC 與 CVE 自動化
-本專案提供一個自動化腳本，可定期同步多個 PoC 專案、更新 CVE 資料，並整合到掃描器中。
-### 前置設定
-1. 設定 Vulners API 憑證環境變數：
-   ```bash
-   export VULNERS_API_ID="your_api_id"
-   export VULNERS_API_KEY="your_api_key"
-   ```
-2. 系統需安裝 Git、Python3 與相關相依套件（requests 已包含於 `requirements.txt`）。
+本專案提供自動化腳本，可分別同步 PoC 倉庫及更新 CVE 資料。
 
-### 使用方式
+### 前置設定
+系統需安裝 Git、Python3 與相關相依套件（requests 已包含於 `requirements.txt`）。若要抓取 CVE 資料，請先設定 Vulners API 憑證環境變數：
+```bash
+export VULNERS_API_ID="your_api_id"
+export VULNERS_API_KEY="your_api_key"
+```
+
+### 同步 PoC
 於專案根目錄執行：
 ```bash
 ./scripts/update_pocs.py
@@ -90,13 +90,20 @@ pip install -r requirements.txt
 - 克隆或更新以下 PoC 倉庫至 `~/PoC-repos`（可透過 `POC_REPO_DIR` 環境變數調整）：
   - swisskyrepo/PayloadsAllTheThings
   - projectdiscovery/nuclei-templates
-  - 0xInfection/Awesome-PoCs
-- 同步上述專案中的 `.py` PoC 腳本至 `scanners/exp` 目錄。
-- 同步 Nuclei `.yaml` 模板至 `scanners/nuclei_templates` 目錄。
-- 從 Vulners API 抓取 CVE 與 PoC 資料，並輸出至 `data/vulners_cve.json`。
+- 同步上述專案中的 `.py` PoC 腳本至 `scanners/exp` 目錄
+- 同步 Nuclei `.yaml` 模板至 `scanners/nuclei_templates` 目錄
+
+### 更新 CVE 資料
+於專案根目錄執行：
+```bash
+./scripts/fetch_vulners_cve.py
+```
+此腳本將：
+- 從 Vulners API 抓取 CVE 與 PoC 資料，並輸出至 `data/vulners_cve.json`
 
 ### 排程運行範例
-使用 cron 每週自動更新：
+使用 cron 每週自動更新 PoC 倉庫及 CVE 資料：
 ```cron
 0 0 * * 0 cd /path/to/scanner && ./scripts/update_pocs.py >> cron_update_pocs.log 2>&1
-```
+0 1 * * 0 cd /path/to/scanner && ./scripts/fetch_vulners_cve.py >> cron_fetch_vulners.log 2>&1
+``` 

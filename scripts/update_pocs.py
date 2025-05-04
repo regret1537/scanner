@@ -1,19 +1,15 @@
 #!/usr/bin/env python3
 """
-sync_pocs: Automatically sync PoC repositories, update CVE data, and integrate into scanners.
+sync_pocs: Automatically sync PoC repositories and integrate into scanners.
 """
 import os
-import sys
 import subprocess
 import shutil
-import requests
-import json
 
 # Configuration
 REPOS = [
     "https://github.com/swisskyrepo/PayloadsAllTheThings.git",
     "https://github.com/projectdiscovery/nuclei-templates.git",
-    "https://github.com/0xInfection/Awesome-PoCs.git",
 ]
 # Directory where PoC repos will be cloned or updated
 POC_DIR = os.path.abspath(os.path.expanduser(os.environ.get('POC_REPO_DIR', '~/PoC-repos')))
@@ -51,7 +47,7 @@ def sync_python_pocs():
         if os.path.isfile(path):
             os.unlink(path)
     # Re-populate
-    for repo_name in ('PayloadsAllTheThings', 'Awesome-PoCs'):
+    for repo_name in ('PayloadsAllTheThings',):
         src_root = os.path.join(POC_DIR, repo_name)
         if os.path.isdir(src_root):
             for root, _, files in os.walk(src_root):
@@ -79,30 +75,11 @@ def sync_nuclei_templates():
         # Copy new templates
         shutil.copytree(src, NUCLEI_DIR, dirs_exist_ok=True)
 
-def fetch_vulners_cve():
-    api_id = os.environ.get('VULNERS_API_ID')
-    api_key = os.environ.get('VULNERS_API_KEY')
-    if not api_id or not api_key:
-        print('VULNERS_API_ID or VULNERS_API_KEY not set; skipping CVE fetch')
-        return
-    os.makedirs(DATA_DIR, exist_ok=True)
-    url = 'https://vulners.com/api/v3/search/lucene/'
-    payload = {'query': 'type:exploit OR type:Poc'}
-    try:
-        resp = requests.post(url, json=payload, auth=(api_id, api_key), timeout=30)
-        resp.raise_for_status()
-        data = resp.json()
-        with open(VULNERS_CVE_FILE, 'w') as f:
-            json.dump(data, f, indent=2)
-        print(f'Saved Vulners CVE data to {VULNERS_CVE_FILE}')
-    except Exception as e:
-        print(f'Error fetching Vulners CVE data: {e}', file=sys.stderr)
 
 def main():
     sync_repos()
     sync_python_pocs()
     sync_nuclei_templates()
-    fetch_vulners_cve()
 
 if __name__ == '__main__':
     main()
