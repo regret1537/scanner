@@ -18,11 +18,13 @@
 ## 環境需求
 
 
-- Python 3.6 或更新版本
+- Python 3.6 或更新版本，並包含 pip
 - Git
 - 虛擬環境工具（例如 `venv` 或 `virtualenv`）
-- sublist3r（`pip install sublist3r`）
 - nmap（透過系統套件管理工具安裝，例如 `apt install nmap`）
+- Redis（用於 RQ 任務隊列）
+- Docker 和 Docker Compose（選用，方便容器化部署）
+- 其他 Python 套件請透過 `pip install -r requirements.txt` 安裝，包括 Flask、requests、beautifulsoup4、PyYAML、redis、rq、sublist3r、gunicorn、pytest 等
 
 ## 安裝
 
@@ -126,7 +128,7 @@ scanners/plugins/
 ## 測試 (pytest)
 安裝測試依賴並執行：
 ```bash
-pip install -r requirements.txt pytest
+pip install -r requirements.txt
 pytest tests/
 ```
 已經提供對所有 EXP PoC 的自動加載和執行測試 `tests/test_exp_pocs.py`，可擴充其他模組的測試。
