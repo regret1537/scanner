@@ -5,24 +5,52 @@
   <title>掃描結果</title>
 </head>
 <body>
-  <h1>掃描結果：{{ target }}</h1>
+  <div id="result-content"{%- if login_required %} style="display:none;"{% endif %}>
+    <h1>掃描結果：{{ target }}</h1>
 
-  {% for vuln_type, report in results.items() %}
-    <h2>{{ vuln_type }}</h2>
-    <pre>{{ (report | tojson(indent=2))
-           | replace('true', '是')
-           | replace('false', '否') }}</pre>
-  {% endfor %}
+    {% for vuln_type, report in results.items() %}
+      <h2>{{ vuln_type }}</h2>
+      {% if vuln_descriptions and vuln_type in vuln_descriptions %}
+        <p><strong>漏洞說明：</strong>{{ vuln_descriptions[vuln_type] }}</p>
+        <p><strong>測試結果：</strong></p>
+      {% endif %}
+      <pre>{{ report
+             | tojson(indent=2)
+             | replace('true', '是')
+             | replace('false', '否')
+             | safe }}</pre>
+    {% endfor %}
 
-  <p><a href="/">回到首頁</a></p>
-  <p>說明：上述結果中“是”代表偵測到可能的漏洞，“否”代表未偵測到漏洞。</p>
+    <p><a href="/">回到首頁</a></p>
+    <p>說明：上述結果中“是”代表偵測到可能的漏洞，“否”代表未偵測到漏洞。</p>
+  </div>
   {% if login_required %}
+  <!-- Login required modal with three options -->
+  <div id="login-modal" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:1000;">
+    <div style="background:#fff;padding:20px;border-radius:8px;text-align:center;max-width:80%;">
+      <p>掃描過程中偵測到需要登入，請選擇後續操作：</p>
+      <button id="modal-relogin">重新填寫 Cookie 並重新掃描</button>
+      <button id="modal-login">前往登入頁面</button>
+      <button id="modal-cancel">取消並執行下一個任務</button>
+    </div>
+  </div>
   <script>
-    // Notify user if login required was detected
-    if (confirm('掃描過程中偵測到需要登入，是否前往首頁填寫 Cookie 並重新掃描？')) {
+    // Relogin: redirect to homepage with target pre-filled
+    document.getElementById('modal-relogin').addEventListener('click', function(){
+      window.location.href = '/?target=' + encodeURIComponent('{{ target }}');
+    });
+    // Login: redirect to target site for manual login
+    document.getElementById('modal-login').addEventListener('click', function(){
+      window.location.href = '{{ target }}';
+    });
+    // Cancel: abandon current task, go to homepage for next
+    document.getElementById('modal-cancel').addEventListener('click', function(){
       window.location.href = '/';
-    }
+    });
   </script>
+  <style>
+    #login-modal button { margin: 0 8px; padding: 6px 12px; }
+  </style>
   {% endif %}
 </body>
 </html>
