@@ -66,3 +66,32 @@ pip install -r requirements.txt
 5. 系統將依序對所選子域名執行 nmap 端口掃描，並對原始目標 URL 執行所選的漏洞檢測，最後顯示 JSON 格式的掃描結果。
 
 6. 點選 **回到首頁** 可重新執行新的掃描。
+## PoC & CVE Automation
+本專案提供一個自動化腳本，可定期同步多個 PoC 專案、更新 CVE 資料，並整合到掃描器中。
+### 前置設定
+1. 設定 Vulners API 憑證環境變數：
+   ```bash
+   export VULNERS_API_ID="your_api_id"
+   export VULNERS_API_KEY="your_api_key"
+   ```
+2. 確保系統已安裝 Git、Python3 及相關依賴（`requests` 已包含於 `requirements.txt`）。
+
+### 使用方式
+於專案根目錄執行：
+```bash
+./scripts/update_pocs.py
+```
+此腳本將：
+- 克隆或更新以下專案到 `~/PoC-repos`（可透過環境變數 `POC_REPO_DIR` 調整）：
+  - swisskyrepo/PayloadsAllTheThings
+  - projectdiscovery/nuclei-templates
+  - 0xInfection/Awesome-PoCs
+- 同步各專案中的 `.py` PoC 腳本到 `scanners/exp` 目錄
+- 同步 Nuclei `.yaml` 模板到 `scanners/nuclei_templates` 目錄
+- 從 Vulners API 抓取 CVE & PoC 資料，輸出至 `data/vulners_cve.json`
+
+### 排程 (cron)
+每週自動更新範例：
+```cron
+0 0 * * 0 cd /path/to/scanner && ./scripts/update_pocs.py >> cron_update_pocs.log 2>&1
+```

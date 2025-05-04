@@ -18,11 +18,12 @@
     </fieldset>
     <fieldset>
       <legend>掃描項目</legend>
-      <label><input type="checkbox" name="scans" value="sqli" checked> SQL Injection</label>
-      <label><input type="checkbox" name="scans" value="xss" checked> XSS</label>
-      <label><input type="checkbox" name="scans" value="csrf"> CSRF</label>
-      <label><input type="checkbox" name="scans" value="rce"> RCE</label>
-      <label><input type="checkbox" name="scans" value="exp"> EXP PoC</label>
+      {% for key, label in scans_info %}
+        <label>
+          <input type="checkbox" name="scans" value="{{ key }}" {% if key in default_scans %}checked{% endif %}>
+          {{ label }}
+        </label><br>
+      {% endfor %}
     </fieldset>
     <p><button type="submit">開始掃描</button></p>
   </form>
