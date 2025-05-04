@@ -64,17 +64,47 @@ def index():
             target = request.form.get('target')
             hosts = request.form.getlist('hosts')
             selected = request.form.getlist('scans')
+            # Optional authentication via Cookie header
+            cookie_header = request.form.get('cookie', '').strip()
+            # Prepare to detect login requirements
+            login_required = False
+            # Monkey-patch requests to include cookie and detect redirects to login
+            import requests as _requests
+            session = _requests.Session()
+            if cookie_header:
+                session.headers.update({'Cookie': cookie_header})
+            # Save originals
+            orig_get = _requests.get
+            orig_post = _requests.post
+            def patched_get(*args, **kwargs):
+                nonlocal login_required
+                resp = session.get(*args, **kwargs)
+                if resp.status_code in (401, 403) or '/login' in resp.url.lower():
+                    login_required = True
+                return resp
+            def patched_post(*args, **kwargs):
+                nonlocal login_required
+                resp = session.post(*args, **kwargs)
+                if resp.status_code in (401, 403) or '/login' in resp.url.lower():
+                    login_required = True
+                return resp
+            _requests.get = patched_get
+            _requests.post = patched_post
+            # Perform scans
             results = {}
-            # Subdomains list
             results['Subdomains'] = hosts
-            # Port scanning on selected hosts
             results['Port Scan'] = port_scan(hosts) if port_scan else {}
-            # Vulnerability scans on original target
             for key in selected:
                 scan_fun = vuln_scans.get(key)
                 if scan_fun:
                     results[pretty_name(key)] = scan_fun(target)
-            return render_template('result.html', target=target, results=results)
+            # Restore original request methods
+            _requests.get = orig_get
+            _requests.post = orig_post
+            # Render results, include login flag
+            return render_template('result.html', target=target,
+                                   results=results,
+                                   login_required=login_required)
     # GET or fallback: initial enumeration form
     return render_template('index.html')
 

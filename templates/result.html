@@ -13,6 +13,14 @@
   {% endfor %}
 
   <p><a href="/">回到首頁</a></p>
+  {% if login_required %}
+  <script>
+    // Notify user if login required was detected
+    if (confirm('掃描過程中偵測到需要登入，是否前往首頁填寫 Cookie 並重新掃描？')) {
+      window.location.href = '/';
+    }
+  </script>
+  {% endif %}
 </body>
 </html>
 

@@ -17,6 +17,11 @@
       {% endfor %}
     </fieldset>
     <fieldset>
+      <legend>認證 Cookie (選填)</legend>
+      <p>如需登入後掃描，請填入 Cookie Header 值，例如 <code>SESSION=abcd1234; token=xyz</code></p>
+      <input type="text" name="cookie" size="80" placeholder="key1=val1; key2=val2">
+    </fieldset>
+    <fieldset>
       <legend>掃描項目</legend>
       {% for key, label in scans_info %}
         <label>
