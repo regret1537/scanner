@@ -26,23 +26,27 @@
 
 ## 安裝
 
-1. 複製此倉庫至本機：
+### Windows 環境
+
+```powershell
+git clone https://github.com/regret1537/scanner.git
+cd scanner
+
+python -m venv venv
+venv\Scripts\activate
+
+pip install -r requirements.txt
+```
+
+### macOS 環境
 
 ```bash
 git clone https://github.com/regret1537/scanner.git
 cd scanner
-```
 
-2. （可選）建立並啟用虛擬環境：
-
-```bash
 python3 -m venv venv
 source venv/bin/activate
-```
 
-3. 安裝 Python 相依套件：
-
-```bash
 pip install -r requirements.txt
 ```
 
