@@ -82,6 +82,12 @@ def pretty_name(key):
 
 app = Flask(__name__)
 
+# Initialize Redis client for storing task status and progress
+import json
+import redis
+redis_url = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+redis_client = redis.Redis.from_url(redis_url)
+
 # Asynchronous task executor and storage
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -89,12 +95,7 @@ from flask import jsonify, abort
 
 # Thread pool for background scans
 executor = ThreadPoolExecutor(max_workers=4)
-# task_id -> Future
-TASKS = {}
-# task_id -> {'done': int, 'total': int}
-PROGRESS = {}
-# task_id -> {'results': dict, 'login_required': bool, 'target': str}
-RESULTS = {}
+# Task state and progress now managed via Redis
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -199,6 +200,8 @@ def run_scan_task(task_id, target, hosts, selected, selected_pocs, cookie_header
     """
     Worker function to perform scans in background and track progress.
     """
+    # Mark task as running in Redis
+    redis_client.set(f"scan:{task_id}:status", 'running')
     login_required = False
     # prepare request session with cookie and login detection
     import requests as _requests
@@ -219,9 +222,7 @@ def run_scan_task(task_id, target, hosts, selected, selected_pocs, cookie_header
             login_required = True
         return resp
     _requests.get, _requests.post = patched_get, patched_post
-    # initialize progress
-    total_steps = 1 + len(selected) + (1 if selected_pocs else 0)
-    PROGRESS[task_id] = {'done': 0, 'total': total_steps}
+    # Progress total is initialized in api_start_scan; increment as steps complete
     # run scans
     results = {}
     results['Subdomains'] = hosts
@@ -229,23 +230,28 @@ def run_scan_task(task_id, target, hosts, selected, selected_pocs, cookie_header
     # Port scan with configured range
     pr = CONFIG.get('port_range')
     results['Port Scan'] = port_scan(hosts, pr) if port_scan else {}
-    PROGRESS[task_id]['done'] += 1
+    redis_client.hincrby(f"scan:{task_id}:progress", 'done', 1)
     # vulnerability scans
     for key in selected:
         scan_fun = vuln_scans.get(key)
         if scan_fun:
             results[pretty_name(key)] = scan_fun(target)
-        PROGRESS[task_id]['done'] += 1
+        redis_client.hincrby(f"scan:{task_id}:progress", 'done', 1)
     # PoC scans
     if selected_pocs:
         scan_exp_fun = vuln_scans.get('exp')
         if scan_exp_fun:
             results[pretty_name('exp')] = scan_exp_fun(target, pocs=selected_pocs)
-        PROGRESS[task_id]['done'] += 1
+        redis_client.hincrby(f"scan:{task_id}:progress", 'done', 1)
     # restore requests
     _requests.get, _requests.post = orig_get, orig_post
-    # save results
-    RESULTS[task_id] = {'results': results, 'login_required': login_required, 'target': target}
+    # Save results and mark done
+    redis_client.set(f"scan:{task_id}:results", json.dumps({
+        'results': results,
+        'login_required': login_required,
+        'target': target
+    }))
+    redis_client.set(f"scan:{task_id}:status", 'done')
 
 
 @app.route('/api/start_scan', methods=['POST'])
@@ -257,36 +263,53 @@ def api_start_scan():
     selected_pocs = request.form.getlist('pocs')
     cookie_header = request.form.get('cookie', '').strip()
     task_id = uuid.uuid4().hex
+    # initialize task status and progress in Redis
+    total_steps = 1 + len(selected) + (1 if selected_pocs else 0)
+    redis_client.set(f"scan:{task_id}:status", 'pending')
+    redis_client.hset(f"scan:{task_id}:progress", mapping={'done': 0, 'total': total_steps})
     # submit background task
-    future = executor.submit(run_scan_task, task_id, target, hosts, selected, selected_pocs, cookie_header)
-    TASKS[task_id] = future
+    executor.submit(run_scan_task, task_id, target, hosts, selected, selected_pocs, cookie_header)
     return jsonify({'task_id': task_id})
 
 @app.route('/api/scan_status/<task_id>', methods=['GET'])
 def api_scan_status(task_id):
-    if task_id not in TASKS:
+    # Retrieve task status from Redis
+    status = redis_client.get(f"scan:{task_id}:status")
+    if status is None:
         abort(404)
-    future = TASKS[task_id]
-    if future.running():
-        status = 'running'
-    elif future.done():
-        status = 'done'
-    else:
-        status = 'pending'
-    progress = PROGRESS.get(task_id, {})
+    status = status.decode()
+    # Retrieve progress
+    progress_raw = redis_client.hgetall(f"scan:{task_id}:progress")
+    progress = {}
+    if progress_raw:
+        done = progress_raw.get(b'done')
+        total = progress_raw.get(b'total')
+        progress = {
+            'done': int(done) if done else 0,
+            'total': int(total) if total else 0
+        }
     response = {'status': status, 'progress': progress}
+    # Include results if done
     if status == 'done':
-        data = RESULTS.get(task_id, {})
+        data_json = redis_client.get(f"scan:{task_id}:results")
+        data = json.loads(data_json) if data_json else {}
         response['results'] = data.get('results')
         response['login_required'] = data.get('login_required')
     return jsonify(response)
 
 @app.route('/results/<task_id>')
 def show_results(task_id):
-    data = RESULTS.get(task_id)
-    if not data:
+    # Retrieve results from Redis
+    data_json = redis_client.get(f"scan:{task_id}:results")
+    if not data_json:
         abort(404)
-    return render_template('result.html', target=data['target'], results=data['results'], login_required=data['login_required'])
+    data = json.loads(data_json)
+    return render_template(
+        'result.html',
+        target=data.get('target'),
+        results=data.get('results'),
+        login_required=data.get('login_required')
+    )
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
