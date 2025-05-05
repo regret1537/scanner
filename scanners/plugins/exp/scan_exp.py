@@ -31,7 +31,8 @@ def scan_exp(url, pocs=None):
     # Semaphore to limit concurrent requests
     sem = threading.BoundedSemaphore(concurrency)
     findings = []
-    exp_dir = os.path.join(os.path.dirname(__file__), 'exp')
+    # Directory containing PoC scripts
+    exp_dir = os.path.join(os.path.dirname(__file__), 'pocs')
     if not os.path.isdir(exp_dir):
         return findings
     for filename in os.listdir(exp_dir):

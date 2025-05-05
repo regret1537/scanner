@@ -140,8 +140,8 @@ def index():
                 hosts += subdomains
             # Provide vulnerability scan options to template (exclude PoC group)
             scans_info = [(key, pretty_name(key)) for key in vuln_scans.keys() if key != 'exp']
-            # Dynamically list available PoC modules
-            exp_dir = os.path.join(os.path.dirname(__file__), 'scanners', 'exp')
+            # Dynamically list available PoC modules from plugins/exp/pocs directory
+            exp_dir = os.path.join(os.path.dirname(__file__), 'scanners', 'plugins', 'exp', 'pocs')
             pocs = []
             if os.path.isdir(exp_dir):
                 for fname in os.listdir(exp_dir):
