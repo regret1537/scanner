@@ -102,9 +102,14 @@
     document.getElementById('btn-credentials-setup').addEventListener('click', function(){
       const target = document.querySelector('input[name="target"]').value;
       fetch(`/login_setup?target=${encodeURIComponent(target)}`)
-        .then(res=>res.json())
-        .then(data=>{
-          if (data.error) { alert('Error: '+data.error); return; }
+        .then(res => res.json())
+        .then(data => {
+          if (data.error) {
+            // Fallback to manual login: open target page for user to login and copy cookies
+            window.open(target, '_blank');
+            alert('無法自動偵測登入表單，請在新開視窗手動登入，並將登入完成後的 Cookie 值複製到 Cookie 輸入框');
+            return;
+          }
           showCredentialModal(data);
         })
         .catch(err=>{ alert('無法獲取登入表單'); console.error(err); });
