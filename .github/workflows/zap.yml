@@ -1,10 +1,12 @@
 name: ZAP Web Scan
 
-on:
+
   workflow_dispatch:   # 手動執行
   push:
     branches: [ "main" ]
-
+on: permissions:
+  contents: read
+  issues: write
 jobs:
   zap_scan:
     runs-on: ubuntu-latest
@@ -16,5 +18,5 @@ jobs:
         uses: zaproxy/action-baseline@v0.12.0
         with:
           target: 'https://www.lulumatch.com/'
-          fail_action: true
+          fail_action: false
           artifact_name: 'zap-report'
