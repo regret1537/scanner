@@ -19,4 +19,4 @@ jobs:
         with:
           target: 'https://www.lulumatch.com/'
           fail_action: false
-          artifact_name: 'zap_report'
+          artifact_name: 'zapreport'
