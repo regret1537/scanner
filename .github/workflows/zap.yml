@@ -1,10 +1,10 @@
 name: ZAP Web Scan
 
-
+on: 
   workflow_dispatch:   # 手動執行
   push:
     branches: [ "main" ]
-on: permissions:
+permissions:
   contents: read
   issues: write
 jobs:
