@@ -17,6 +17,6 @@ jobs:
       - name: Run OWASP ZAP Baseline Scan
         uses: zaproxy/action-baseline@v0.15.0
         with:
-          target: 'https://www.lionsclubs.org.tw/2021/'
+          target: 'https://lionsinternational.my.site.com/'
           fail_action: false
           artifact_name: 'zapreport'
